@@ -1,6 +1,8 @@
 ---
 title: "Hw 2"
 author: "Amanda Kramer"
+collaborator: "Charles Biggar aka also Amanda Kramer"
+note: "this is Charles Biggar's computer, so it will show him as a collaborator"
 date: 9/30/20
 output: github_document
 ---
@@ -11,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(readxl)
 library(knitr)
+library(dplyr)
 ```
 
 ## Problem 1
@@ -61,3 +64,149 @@ tw_sb =
 ```
 
 My trash_wheel data set has `r nrow(trash_wheel)` observations, and my precip_all data set has `r nrow(precip_all)` observations. Trash_wheel includes variables to show the number of items removed from the harbor, such as `glass_bottles` and `grocery_bags`. We can also see that the median number of `sports_balls` in the dumpster in 2017 was `r median(pull(filter(trash_wheel, year==2017), sports_balls))`. The precip_all dataframe can show us that the total precipitation in 2018 was `r sum(pull(precip_18, total))` inches.
+
+## Problem 2
+First, read and clean the data; retain line, station, name, station latitude / longitude, routes served, entry, vending, entrance type, and ADA compliance. Convert the entry variable from character (YES vs NO) to a logical variable (the ifelse or recode function may be useful).
+
+```{r}
+nyc_subway =
+  read_csv("./NYC_Transit_Subway_Entrance_And_Exit_Data.csv") %>%
+  janitor::clean_names() %>%
+select(line:entry, vending, ada) %>%
+   mutate(entry = recode(entry, YES = "TRUE", NO = "FALSE"))
+```
+
+
+My nyc_subway data set has `r nrow(nyc_subway)` and `r ncol(nyc_subway)`observations. The dataset contains `r names(nyc_subway)`
+Thus far to clean the data,  we've cleaned up the names, removed unneeded variables, and changed the file type of "entry". These data are not yet tidy, since the "route" variables are each their own column instead of being tidy under one column.
+
+
+* How many distinct stations are there? Note that stations are identified both by name and by line (e.g. 125th St A/B/C/D; 125st 1; 125st 4/5); the distinct function may be useful here.
+
+```{r}
+  filter(nyc_subway) %>%
+  distinct(line, station_name) %>%
+  count()
+```
+There are 465 distinct stations
+
+* How many stations are ADA compliant? 
+```{r}
+  filter(nyc_subway, ada == TRUE) %>%
+  distinct(line, station_name) %>%
+  count()
+```
+84 trains are ADA compliant.
+
+* What proportion of station entrances / exits without vending allow entrance?
+```{r}
+nyc_entr= nyc_subway %>%
+filter( vending == 'NO') %>%
+  mutate(entrance_num = ifelse(entry == "TRUE", 1, 0)) %>%
+  summarise(mean(entrance_num))
+```
+
+There are `r nyc_entr*100` percent of entrance/exits without vending that allow entrance.
+
+* Reformat data so that route number and route name are distinct variables. 
+
+```{r}
+transit_tidy = nyc_subway %>%
+  mutate_at(vars(route1:route11), as.character) %>%
+  pivot_longer(
+    route1:route11,
+    names_to = "route_name",
+    names_prefix = "route",
+    values_to = "route_number") %>%
+drop_na(route_number)
+```
+* How many distinct stations serve the A train? 
+```{r}
+filter(transit_tidy, route_number == "A") %>%
+  distinct(station_name, line) %>%
+count()
+```
+* Of the stations that serve the A train, how many are ADA compliant?
+```{r}
+filter(transit_tidy, route_number == "A", ada == TRUE) %>%
+  distinct(station_name, line) %>%
+count()
+```
+60 distinct train stations serve the A train, and 17 of them are ADA compliant.
+
+-------------------------------------------------------
+## Problem 3
+
+First, clean the data in pols-month.csv. Use separate() to break up the variable mon into integer variables year, month, and day; replace month number with month name; create a president variable taking values gop and dem, and remove prez_dem and prez_gop; and remove the day variable.
+
+```{r}
+pols =
+  read_csv("./data/pols-month.csv") %>%
+  janitor::clean_names() %>% 
+  separate(mon, c("year", "month", "day")) %>%
+  mutate (prez = ifelse(prez_gop == 1, "gop", "dem"),
+          year = as.numeric(year), 
+          month = replace(month, month == "01", "Jan"),
+          month = replace(month, month == "02", "Feb"),
+          month = replace(month, month == "03", "Mar"),
+          month = replace(month, month == "04", "Apr"),
+          month = replace(month, month == "05", "May"),
+          month = replace(month, month == "06", "Jun"),
+          month = replace(month, month == "07", "Jul"),
+          month = replace(month, month == "08", "Aug"),
+          month = replace(month, month == "09", "Sep"),
+          month = replace(month, month == "10", "Oct"),
+          month = replace(month, month == "11", "Nov"),
+          month = replace(month, month == "12", "Dec")) %>% 
+  select (-prez_gop, -prez_dem, -day)
+```
+
+Second, clean the data in snp.csv using a similar process to the above. For consistency across datasets, arrange according to year and month, and organize so that year and month are the leading columns.
+
+```{r}
+snp =
+  read_csv("./data/snp.csv") %>%
+  janitor::clean_names() %>% 
+  separate(date, c("month", "day", "year")) %>% 
+  mutate(year = as.numeric(year), 
+          month = replace(month, month == "1", "Jan"),
+          month = replace(month, month == "2", "Feb"),
+          month = replace(month, month == "3", "Mar"),
+          month = replace(month, month == "4", "Apr"),
+          month = replace(month, month == "5", "May"),
+          month = replace(month, month == "6", "Jun"),
+          month = replace(month, month == "7", "Jul"),
+          month = replace(month, month == "8", "Aug"),
+          month = replace(month, month == "9", "Sep"),
+          month = replace(month, month == "10", "Oct"),
+          month = replace(month, month == "11", "Nov"),
+          month = replace(month, month == "12", "Dec")) %>% 
+  select (year, month, -day, close) %>% 
+  arrange (year, month)
+```
+
+Third, tidy the unemployment data so that it can be merged with the previous datasets. This process will involve switching from “wide” to “long” format; ensuring that key variables have the same name; and ensuring that key variables take the same values.
+
+```{r}
+unemp=
+  read_csv("./data/unemployment.csv") %>% 
+  janitor::clean_names() %>% 
+  pivot_longer(
+    jan:dec, 
+    names_to = "month", 
+    values_to = "rate")
+```
+
+Now joining the datasets.
+
+```{r}
+q2_merge =
+  left_join(pols, snp, by =c("year","month"))
+q2_merge
+
+final_db = 
+  left_join(q2_merge,unemp, by =c("year","month"))
+```
+
+These datasets provide information on who was in power by month starting in the late 1940s and early 50s including `snp`, which provides data on the S&P 500, and unemployment data. The resulting database `final_db` combines all these datasets to show variables such as number of senators per party (`sen_dem` and `sen_gop`), the political party of the president (`prez`) and `snp`, and unemployment data. The databases has `r nrow(final_db)` observations and covers January 1947 to June 2015.
+
